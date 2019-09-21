@@ -1,0 +1,279 @@
+<!doctype html>
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>Robinhood order page</title>
+		<meta name="description" content="Use hotkeys to place orders on Robinhood">
+		<meta name="author" content="Dan Smith">
+		<link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-beta.2/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-PsH8R72JQ3SOdhVi3uxftmaW6Vc51MKb0q5P2rRUpPvrszuE4W1povHYgTpBfshb" crossorigin="anonymous">
+		<link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.0.0-beta/css/bootstrap-grid.css" rel="stylesheet">
+		<style>
+			#order-box {
+				height: 10rem;
+				background-color: transparent;
+				text-align: center;
+				border-radius: 9px;
+				border-width: 2px;
+				color: #000;
+			}
+
+			.center {
+				margin: 0 auto;
+			}
+
+			.navbar-right {
+				position: absolute;
+				right: 16px;
+			}
+
+			textarea {
+				text-align: center;
+			}
+
+			label {
+				display: block;
+			}
+
+			select {
+				width: 100%;
+			}
+
+			#hot-order textarea[disabled] {
+				border-color: grey;
+			}
+		</style>
+	<script
+		src="https://code.jquery.com/jquery-3.2.1.min.js"
+		integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4="
+		crossorigin="anonymous">
+	</script>
+	</head>
+
+	<body>
+		{{{navbar}}}
+		<div id="hot-order" class="container my-4">
+			<div class="row">
+				<div class="col-sm-6">
+					<h2>
+						Hotkeys
+					</h2>
+					<div>
+						<label>Buy key(s): <input class="form-control" type="text" name="buy_key"></label>
+					</div>
+					<div>
+						<label>Sell key(s): <input class="form-control" type="text" name="sell_key"></label>
+					</div>
+					<div>
+						<label>Cancel key(s): <input class="form-control" type="text" name="cancel_key"></label>
+					</div>
+				</div>
+				<div class="col-sm-6">
+					<h2>
+						Sell order
+					</h2>
+					<div>
+						<label>Select from list:</label>
+					</div>
+					<div>
+						<select class="custom-select" id="sell-order-list">
+							<option>Select from menu</option>
+						</select>
+					</div>
+				</div>
+			</div>
+			<div class="row">
+				<div class="col-sm-6">
+					<h2>
+						Buy order
+					</h2>
+					<div>
+						<label>Symbol: <input class="form-control" type="text" name="buy_symbol"></label>
+					</div>
+					<div>
+						<label>Amount: <input class="form-control" type="text" name="buy_amount" placeholder="% of account"></label>
+					</div>
+					<div>
+						<label>Pad limit: <input class="form-control" type="text" name="pad_limit" placeholder="$ to pad limit order"></label>
+					</div>
+				</div>
+				<div class="col-sm-6">
+					<h2>Order box</h2>
+					<textarea id="order-box" class="center btn-success form-control" placeholder="Order box must be highlighted to place trades" disabled></textarea>
+				</div>
+			</div>
+		</div>
+		<script>
+			(function(jq) {
+				var orderBox = jq('#order-box'),
+					inputs = jq('#hot-order :input'),
+					sellList = jq('#sell-order-list'),
+					orderStatus = jq('#order-status'),
+					buySymbol = inputs.filter('[name="buy_symbol"]'),
+					buyAmount = inputs.filter('[name="buy_amount"]'),
+					acctBalance = parseFloat({{account_balance}}),
+					fundsAvail = acctBalance,
+					orderID = 0;
+
+				function orderData(merge) {
+					var orderObj = {};
+
+					jq.each(inputs.serializeArray(), function(idx, obj) {
+						orderObj[obj.name] = obj.value;
+					});
+
+					return jq.extend(orderObj, merge);
+				}
+
+				function validOrder() {
+					if (buySymbol.val() && buyAmount.val()) {
+						return true;
+					} else {
+						return false;
+					}
+				}
+
+				function sellSelected() {
+					return sellList.find('option:selected');
+				}
+
+				// If symbol is found by robinhood
+				buySymbol.on('change', function() {
+					jq.get('localhost/ajax/quote', jq.extend(orderData(), {trade_status: 'instrument', order_id: orderID}), function(resp) {
+						var state = true;
+
+						if (JSON.parse(resp).body.results.length) {
+							state = false;
+						}
+
+						orderBox.attr('disabled', state);
+					});
+				});
+
+				orderBox.on('keydown', function(evt) {
+					var hotkey = evt.key,
+						orderInfo = orderData(),
+						getQuote = {trade_status: 'quote', order_id: orderID};
+
+					if (!validOrder()) {
+						return false;
+					}
+
+					if (hotkey === jq.trim(orderInfo['buy_key'])) {
+						getQuote.order_type = 'buy';
+					}
+
+					if (
+						hotkey === jq.trim(orderInfo['sell_key']) &&
+						sellSelected().hasClass('order')
+					) {
+						getQuote.order_type = 'sell';
+					}
+
+					if (getQuote.order_type) {
+						jq.get('localhost/ajax/quote', jq.extend(orderInfo, getQuote));
+					}
+				});
+
+				orderBox.on('keyup', function(evt) {
+					var hotkey = evt.key
+						orderInfo = orderData(),
+						sendOrder = {trade_status: 'execute', order_id: orderID};
+
+					if (!validOrder()) {
+						return false;
+					}
+
+					if (hotkey === jq.trim(orderInfo['buy_key'])) {
+						var buyCash = (acctBalance * (parseInt(orderInfo.buy_amount) / 100)),
+							newOpt = jq('<option data-buy-amount="' + orderInfo.buy_amount + '" data-buy-symbol="' + orderInfo.buy_symbol + '">').
+									 prop('selected', true).
+									 addClass('order buy-order').
+									 text('Bought ' + orderInfo.buy_amount + '% of symbol: ' + orderInfo.buy_symbol.toUpperCase());
+
+						if (buyCash > fundsAvail) {
+							return false;
+						}
+
+						// Add select sell option
+						sellList[0].add(newOpt[0]);
+						sendOrder.order_type = 'buy';
+						sendOrder.cash_allotment = buyCash;
+
+						fundsAvail -= buyCash;
+					}
+
+					if (hotkey === jq.trim(orderInfo['sell_key'])) {
+						var sellData = sellSelected().data();
+
+						if (Object.keys(sellData).length) {
+							orderInfo.sell_symbol = sellData['buy-symbol'];
+							orderInfo.sell_amount = sellData['buy-amount'];
+							sendOrder.order_type = 'sell';
+						}
+					}
+
+					if (hotkey === jq.trim(orderInfo['cancel_key'])) {
+						sendOrder.trade_status = 'cancel';
+						sendOrder.order_type = 'cancel';
+					}
+
+					if (sendOrder.order_type) {
+						jq.get('localhost/ajax/execute', jq.extend(orderInfo, sendOrder), function(resp) {
+							var canceled = JSON.parse(resp);
+
+							console.log(canceled);
+						});
+						orderID++;
+					}
+				});
+			})(jQuery);
+		</script>
+	</body>
+</html>
+  <!--
+
+
+
+var Robinhood = require('robinhood')(credentials, function(){
+    Robinhood.accounts(function(err, response, body){
+        if(err){
+            console.error(err);
+        }else{
+            //console.log("accounts");
+            //console.log(body);
+            //{ previous: null,
+            //  results:
+            //   [ { deactivated: false,
+            //       updated_at: '2016-03-11T20:37:15.971253Z',
+            //       margin_balances: [Object],
+            //       portfolio: 'https://api.robinhood.com/accounts/asdf/portfolio/',
+            //       cash_balances: null,
+            //       withdrawal_halted: false,
+            //       cash_available_for_withdrawal: '692006.6600',
+            //       type: 'margin',
+            //       sma: '692006.6600',
+            //       sweep_enabled: false,
+            //       deposit_halted: false,
+            //       buying_power: '692006.6600',
+            //       user: 'https://api.robinhood.com/user/',
+            //       max_ach_early_access_amount: '1000.00',
+            //       cash_held_for_orders: '0.0000',
+            //       only_position_closing_trades: false,
+            //       url: 'https://api.robinhood.com/accounts/asdf/',
+            //       positions: 'https://api.robinhood.com/accounts/asdf/positions/',
+            //       created_at: '2015-06-17T14:53:36.928233Z',
+            //       cash: '692006.6600',
+            //       sma_held_for_orders: '0.0000',
+            //       account_number: 'asdf',
+            //       uncleared_deposits: '0.0000',
+            //       unsettled_funds: '0.0000' } ],
+            //  next: null }
+        }
+    })
+});
+
+
+
+  -->
+

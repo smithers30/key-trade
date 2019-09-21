@@ -1,0 +1,113 @@
+<!doctype html>
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>Robinhood order page</title>
+		<meta name="description" content="Use hotkeys to place orders on Robinhood">
+		<meta name="author" content="Dan Smith">
+		<link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-beta.2/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-PsH8R72JQ3SOdhVi3uxftmaW6Vc51MKb0q5P2rRUpPvrszuE4W1povHYgTpBfshb" crossorigin="anonymous">
+		<link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.0.0-beta/css/bootstrap-grid.css" rel="stylesheet">
+		<style>
+			.pad-limit-wrap {
+				display: none;
+			}
+
+			.pad-limit-wrap.show {
+				display: block;
+			}
+
+			#order-box {
+				width: 50%;
+				height: 10rem;
+				background-color: transparent;
+				text-align: center;
+				border-radius: 9px;
+				border-width: 2px;
+				color: #000;
+			}
+
+			.center {
+				margin: 0 auto;
+			}
+
+			.navbar-right {
+				position: absolute;
+				right: 16px;
+			}
+		</style>
+		<script
+			src="https://code.jquery.com/jquery-3.2.1.min.js"
+			integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4="
+			crossorigin="anonymous">
+		</script>
+	</head>
+	<body>
+		{{{navbar}}}
+		<div id="hot-order" class="container my-4">
+			<div class="row">
+				<div class="col-sm-12">
+					<h2>
+						Account summary
+					</h2>
+					<table id="account-data" class="table table-responsive table-striped table-inverse table-dark"></table>
+				</div>
+			</div>
+		</div>
+
+		<script>
+			(function(jq) {
+				var accountData = {{{account_data}}},
+					nestHTML = '',
+					tableHTML = '',
+					idx = 0;
+
+				function processNest(data) {
+					var localHTML = '';
+
+					if (data) {
+						if (data['constructor'] === Array) {
+							for (var i = 0; i < data.length; i++) {
+								processNest(data[i]);
+							}
+						} else if (jq.isPlainObject(data)) {
+							for (var o in data) {
+								if (data.hasOwnProperty(o)) {
+									var nestedData = data[o];
+
+									localHTML += '<tr><td>' + o + '</td><td>' + ((nestedData && typeof nestedData !== 'String') ? '<table>' + processNest(nestedData) + '</table>' : String(nestedData)) + '</td></tr>';
+								}
+							}
+
+							nestHTML += localHTML;
+						} else {
+							localHTML += String(data);
+						}
+					} else {
+						localHTML += String(data);
+					}
+
+					return localHTML;
+				}
+
+				function returnNest(data) {
+					nestHTML = ''; // reset
+					processNest(data);
+					return nestHTML;
+				}
+
+				for (var outer in accountData) {
+					if (accountData.hasOwnProperty(outer)) {
+						var outerData = accountData[outer];
+
+						tableHTML += '<tr><td>' + outer + '</td><td>' + ((outerData && typeof outerData !== 'String') ? '<table>' + returnNest(outerData) + '</table>' : String(outerData)) + '</td></tr>';
+					}
+				}
+
+				processNest(accountData);
+				jq('#account-data').html(tableHTML);
+
+			})(jQuery);
+		</script>
+	</body>
+</html>
